@@ -55,7 +55,7 @@ const RUNTIME_ASSETS = [
 // Bump this together with RUNTIME_VERSION whenever a runtime file legitimately
 // changes (this run prints the new value in the failure message).
 const EXPECTED_RUNTIME_HASH =
-  '87fbd9ec766ac35e27c711e42a41189803004287b5a82f78e549c425528232d8'
+  '00f94011d1e2ea5b049034c9220e1137f4cc9a75aa6c34293a3393809f317e30'
 
 function runtimeHash(): string {
   const dir = join(dirname(fileURLToPath(import.meta.url)), 'runtime')
@@ -130,7 +130,18 @@ describe('bundled DTH runtime (.dsa)', () => {
     }
     // Raw at an EXPLICIT time 0: a geograft can hold several keys before the ROM.
     const utils = readFileSync(join(dir, 'DthUtils.dsa'), 'utf8')
-    expect(utils).toContain('oProp.getRawValue(0)')
+    const snapshotFn = utils.slice(
+      utils.indexOf('function memorizeRawMorphsAtFrame0('),
+      utils.indexOf('function closeDanglingMorphKeys('),
+    )
+    // The snapshot itself must READ raw - the evaluated value is only the
+    // flagged fallback (raw:false), never the first choice.
+    expect(snapshotFn).toContain('var fRaw = (typeof oProp.getRawValue == "function") ? oProp.getRawValue(0) : undefined;')
+    expect(snapshotFn).toContain('oSnapshot.raw = false;')
+    // The raw close unclamps only a base outside the limits: the clamp flag
+    // holds on every frame, so an unconditional unclamp would let ROM + ERC
+    // overshoot on frames the close-out never touched.
+    expect(utils).toMatch(/if\(bOutsideLimits && typeof oProp\.setIsClamped === "function"\)/)
   })
 
   // Daz cannot carry non-ASCII out of a script (measured 2026-08-14, DS4 4.24:

@@ -1449,4 +1449,7 @@ v105 — the mouth and the GP/DK geograft close-outs hold the character's
       figures' RAW values at an explicit time 0 before any preset loads; the
       three close-outs close raw-to-raw against it (an ERC share then rides on
       top by itself). Root close-out unchanged. Regenerated scripts only - no
-      migration.
+      migration. The DK close-out takes the same snapshot by ANALOGY - Vi
+      carries GP9, not DK9, so the DK half is unmeasured. The raw close
+      unclamps a morph only when its raw base sits outside the property's
+      limits (the flag holds on every frame, not just the closing key).

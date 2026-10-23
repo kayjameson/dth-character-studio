@@ -1657,8 +1657,14 @@ function closeDanglingMorphKeys(oNodes, iBoundaryFrame, baselineValues, rawBasel
 				var fRawBase = rawBaseline.values[sKey];
 				if(approx_eq(oProp.getKeyValue(iLastKey), fRawBase)) continue;
 				// DS6 pops a modal "keep limits?" when a value sits outside the
-				// property's limits - fatal in an unattended Runner build.
-				if(typeof oProp.setIsClamped === "function") oProp.setIsClamped(false);
+				// property's limits - fatal in an unattended Runner build. Unclamp
+				// ONLY then: the flag holds on every frame, not just this key, so
+				// unclamping a morph whose base sits inside its limits would let a
+				// ROM key + ERC share overshoot them on frames it never touched.
+				// No getMin/getMax on this build: unclamp, as the old path did.
+				var bOutsideLimits = (typeof oProp.getMin == "function" && typeof oProp.getMax == "function")
+					? (fRawBase < oProp.getMin() || fRawBase > oProp.getMax()) : true;
+				if(bOutsideLimits && typeof oProp.setIsClamped === "function") oProp.setIsClamped(false);
 				oProp.setValue(tBoundary, fRawBase);
 				verbose("Closed dangling key:", oProp.getLabel(), "back to raw", fRawBase, "at frame", iBoundaryFrame);
 				iClosed++;
