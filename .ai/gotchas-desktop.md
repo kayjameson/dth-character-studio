@@ -839,3 +839,10 @@ Part of the gotchas set — `.ai/gotchas.md` is the index. Learned by measuremen
   unseen, never be counted as absent. When adding a `cfg`-stubbed probe, ask
   what its empty answer will MEAN to a future caller — the zero costs nothing
   until someone treats it as a fact.
+- **`pnpm dev:desktop` can keep an old `?raw` template after the file changes.**
+  Measured 2026-11-06: the watcher missed one template edit for 71 minutes while the
+  other modules reloaded, so a CSV came from the old template next to v107 scripts.
+  Cause unknown (a clean server caught 25/25 stress edits). `dev-source-guard.ts`
+  now stops generate and Refresh when a loaded source differs from its file; the
+  remedy is restarting the dev app. Restarting clears Vite's module cache; reloading
+  the window alone would refetch the same stale transform.

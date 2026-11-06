@@ -824,7 +824,7 @@ export function jcmMorphModForRuntime(mod: JcmMorphMod): {
  * step — is `.ai/schema-history.md`. Bumping this means adding the entry there,
  * in the same commit.
  */
-export const CHARACTER_SCHEMA_VERSION = 38
+export const CHARACTER_SCHEMA_VERSION = 39
 
 /**
  * Version of the generated **script runtime** — the bundled DTH `.dsa` runtime
@@ -843,7 +843,7 @@ export const CHARACTER_SCHEMA_VERSION = 38
  * step — is `.ai/schema-history.md`. Bumping this means adding the entry there,
  * in the same commit.
  */
-export const RUNTIME_VERSION = 105
+export const RUNTIME_VERSION = 107
 
 /**
  * DTH releases at which the generated **PoseAsset CSV** format changed in a
@@ -1110,6 +1110,12 @@ export const characterSchema = z.object({
    * {@link poseAssetCsvEra} to the active release's; Refresh re-stamps it.
    */
   generatedDthVersion: z.string().max(MAX_NAME_LENGTH).default(''),
+  /**
+   * Fingerprint of the PoseAsset templates this character's CSV was generated
+   * from (`poseAssetTemplatesFingerprint`); '' when unknown. A mismatch makes the
+   * CSV stale, so a template fix reaches existing characters through Refresh.
+   */
+  generatedCsvTemplates: z.string().max(MAX_NAME_LENGTH).default(''),
   // NOTE: the Daz-product scan results used to live here (`products` /
   // `productsUnmatched` / `productsScannedAt`, v8–v29). They were machine-derived
   // provenance that never affected generation, and a few hundred rows of it in a

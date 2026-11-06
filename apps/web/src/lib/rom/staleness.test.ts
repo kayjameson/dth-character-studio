@@ -127,7 +127,12 @@ beforeEach(() => {
 
 // dthRelease/generatedDthVersion are dotted version strings (poseAssetCsvEra
 // compares them numerically; '2.4.3' is the first breaking era).
-const APP = { schema: CHARACTER_SCHEMA_VERSION, runtime: RUNTIME_VERSION, dthRelease: '2.4.3' }
+const APP = {
+  schema: CHARACTER_SCHEMA_VERSION,
+  runtime: RUNTIME_VERSION,
+  dthRelease: '2.4.3',
+  csvTemplates: 'current-templates',
+}
 const BOTH = { hasDazLibrary: true, hasDthRelease: true, dimManifestsFolder: '' }
 
 function status(patch: Partial<api.CharacterAssetStatus> = {}): api.CharacterAssetStatus {
@@ -138,6 +143,7 @@ function status(patch: Partial<api.CharacterAssetStatus> = {}): api.CharacterAss
     schemaVersion: CHARACTER_SCHEMA_VERSION,
     runtimeVersion: RUNTIME_VERSION,
     generatedDthVersion: APP.dthRelease,
+    generatedCsvTemplates: APP.csvTemplates,
     hasScene: true,
     scanDimPath: '',
     ...patch,
@@ -206,6 +212,17 @@ describe('characterStaleTargets / isCharacterStale', () => {
   it('a different CSV era flags csv — only with a DTH release configured', () => {
     // '' era (never generated) vs the 2.4.3 era → stale.
     expect(api.characterStaleTargets(status({ generatedDthVersion: '' }), APP, BOTH).csv).toBe(true)
+    // A template change in the same DTH era still makes the CSV stale, and it
+    // leaves the scripts alone: that's the csv target, not the runtime one.
+    const oldTemplates = api.characterStaleTargets(
+      status({ generatedCsvTemplates: 'older-templates' }),
+      APP,
+      BOTH,
+    )
+    expect(oldTemplates.csv).toBe(true)
+    expect(oldTemplates.runtime).toBe(false)
+    // A definition from before the stamp existed counts as out of date.
+    expect(api.characterStaleTargets(status({ generatedCsvTemplates: '' }), APP, BOTH).csv).toBe(true)
     // A newer release in the SAME era (2.4.10 ≥ 2.4.3, no breaking version
     // between) is NOT stale — eras, not exact versions, drive regeneration.
     expect(

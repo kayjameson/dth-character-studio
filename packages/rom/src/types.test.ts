@@ -407,3 +407,15 @@ describe('characterSkinning genesis default', () => {
     expect(characterSkinning({ ...character, sections: dqsFile })).toBe('dqs')
   })
 })
+
+describe('generatedCsvTemplates (v39, additive)', () => {
+  it('defaults to empty when absent, which Refresh reads as stale', () => {
+    expect(characterSchema.parse(base).generatedCsvTemplates).toBe('')
+  })
+
+  it('preserves the stored value', () => {
+    expect(
+      characterSchema.parse({ ...base, generatedCsvTemplates: 'abc12345' }).generatedCsvTemplates,
+    ).toBe('abc12345')
+  })
+})

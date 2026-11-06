@@ -140,6 +140,27 @@ Inside a group, **drag rows** to reorder (frames simply renumber) and the small
 </td></tr></table>
 </details>
 
+<details>
+<summary><strong>Physics — the pre-defined jiggle ROM</strong></summary>
+<table><tr><td>
+
+Enable the **Physics** section in **Preset** mode and the ROM appends DTH's
+**G9 Physics Example** block — 43 frames pushing the breasts, glutes and stomach
+through the compass directions with DTH's `dth_phy_*` morphs. The generated
+PoseAsset CSV carries its **PHY groups** (one per driver bone: `breast_l`,
+`breast_r`, `glute_l`, `glute_r`, `stomach`, offset distance and radius `5`) and
+every pose's push direction, so nothing is mapped by hand in Houdini. The ROM
+script holds each physics morph at `0` outside its own frames.
+
+**The driver bones are yours to add.** A stock figure has none of them: on the
+**DazToHueSkeleton** node tick **Add Breast Physics Bones**, **Add Glute Physics
+Bones** and **Add Stomach Physics Bones** before you cook — the studio does not
+set them. The Unreal side (spring controllers and pose drivers in the animation
+blueprint) follows DTH's own jiggle-physics guide.
+
+</td></tr></table>
+</details>
+
 ## Finding the internal Daz name
 
 The **Parameter name** is the parameter's internal name, which usually differs from

@@ -57,7 +57,13 @@ import { relocateExportRoot } from './export-root'
 import { poseAssetFramesSchema, sceneWearablesSchema } from './native-types'
 import { hipRefPrefixFor } from '#/lib/scene-subfolder.ts'
 import { sweepExportJunctions, sweepHoudiniProjectDirs } from './houdini'
-import { CHARACTER_SCHEMA_VERSION, poseAssetCsvEra, RUNTIME_VERSION } from '@dth/rom'
+import {
+  CHARACTER_SCHEMA_VERSION,
+  poseAssetCsvEra,
+  poseAssetTemplatesFingerprint,
+  RUNTIME_VERSION,
+} from '@dth/rom'
+import { assertDevSourcesFresh } from '../dev-source-guard'
 import {
   basename,
   cacheCharacterLocation,
@@ -267,6 +273,8 @@ export async function generateCharacterFiles({ data }: { data: unknown }): Promi
   movedInternals: Array<string>
 }> {
   const { projectId, id, previousName, targets } = generateInput.parse(data)
+  // Dev only: never generate from a template the dev server failed to reload.
+  await assertDevSourcesFresh()
   // Which artifact groups to (re)write. The editor's Generate writes both; a
   // selective Refresh asks for only the Daz scripts (runtime change) or only the
   // Houdini CSV (DTH-era change).
@@ -517,7 +525,13 @@ export async function generateCharacterFiles({ data }: { data: unknown }): Promi
       removalSweepNames([legacyPose, ...overrideCsvNames(character.name)], writtenHoudini),
     )
     // Record which DTH release the CSV was generated for (its era drives staleness).
-    await storage.setGeneratedDthVersion(lib, id, activeRelease, location.definitionAbs)
+    await storage.setGeneratedDthVersion(
+      lib,
+      id,
+      activeRelease,
+      poseAssetTemplatesFingerprint(),
+      location.definitionAbs,
+    )
   }
 
   // The PoseAsset CSV is delivered to the export dir by the generated Daz script
@@ -1146,6 +1160,8 @@ async function refreshAllAssetsInner(refreshOpts: {
   resetTooNew?: boolean
   rebuildAvatars?: boolean
 }): Promise<RefreshSummary> {
+  // Dev only: Refresh installs and regenerates from the same loaded sources.
+  await assertDevSourcesFresh()
   const settings = await storage.getSettings()
   const hasDazLibrary = Boolean(settings.dazLibraryFolder)
   // houdini.env wiring rides every refresh: existing characters (and machines
@@ -1162,7 +1178,12 @@ async function refreshAllAssetsInner(refreshOpts: {
     hasDthRelease: activeRelease !== '',
     dimManifestsFolder: storage.dimManifestsPathSpec(settings),
   }
-  const app = { schema: CHARACTER_SCHEMA_VERSION, runtime: RUNTIME_VERSION, dthRelease: activeRelease }
+  const app = {
+    schema: CHARACTER_SCHEMA_VERSION,
+    runtime: RUNTIME_VERSION,
+    dthRelease: activeRelease,
+    csvTemplates: poseAssetTemplatesFingerprint(),
+  }
 
   // Pass 1 — gather every character with its staleness, so we can tell a targeted
   // refresh (some mismatch → regenerate only what's affected) from a forced full
@@ -1267,6 +1288,7 @@ async function refreshAllAssetsInner(refreshOpts: {
       schemaVersion: g.character.schemaVersion,
       runtimeVersion: runtimeInfos[i]?.version ?? null,
       generatedDthVersion: g.character.generatedDthVersion,
+      generatedCsvTemplates: g.character.generatedCsvTemplates,
       hasScene: Boolean(g.character.scenePath),
       scanDimPath: runtimeInfos[i]?.scanDimPath ?? null,
     }
@@ -1536,6 +1558,8 @@ export interface CharacterAssetStatus {
    *  JSON's `generatedDthVersion`; '' when never generated). Staleness compares its
    *  CSV *era* (see {@link poseAssetCsvEra}), not the exact string. */
   generatedDthVersion: string
+  /** Fingerprint of the templates the CSV was generated from ('' when unknown). */
+  generatedCsvTemplates: string
   /** Whether a primary Daz scene is linked. A scene-less character (created
    *  without a scene, editor locked) generates nothing, so its script/CSV can
    *  never be stale — only its schema counts. */
@@ -1549,7 +1573,7 @@ export interface CharacterAssetStatus {
 export interface AssetVersionReport {
   /** The versions the CURRENT app generates with. `dthRelease` is the active DTH
    *  release ('' when none is configured). */
-  app: { schema: number; runtime: number; dthRelease: string }
+  app: { schema: number; runtime: number; dthRelease: string; csvTemplates: string }
   characters: Array<CharacterAssetStatus>
   total: number
   /** Distinct characters that need updating — an older definition schema (migrated
@@ -1573,7 +1597,8 @@ export interface StaleTargets {
   schema: boolean
   /** Daz scripts (runtime + character scripts) are on an older/missing runtime. */
   runtime: boolean
-  /** PoseAsset CSV was generated for a different DTH era — regenerate the CSV. */
+  /** PoseAsset CSV was generated for a different DTH era, or from different
+   *  templates — regenerate the CSV. */
   csv: boolean
 }
 
@@ -1604,7 +1629,8 @@ function samePath(a: string, b: string): boolean {
  *    generation, cleared, or the folder moved — a stale baked path reads a dead
  *    product database and replaces good results with all-unmatched noise).
  *    Judged only when a DAZ library is configured (no library → no scripts).
- *  - `csv`: the CSV's DTH *era* differs from the active release's era — judged only
+ *  - `csv`: the CSV's DTH *era* differs from the active release's era, or it was
+ *    generated from different PoseAsset templates — judged only
  *    when a DTH release is configured. Needs NO DAZ library: the CSV and its
  *    provenance live in the project folder / JSON.
  * Shared by detection, the Refresh table, and the selective refresh so all three
@@ -1626,7 +1652,8 @@ export function characterStaleTargets(
     csv:
       c.hasScene &&
       opts.hasDthRelease &&
-      poseAssetCsvEra(c.generatedDthVersion) !== poseAssetCsvEra(app.dthRelease),
+      (poseAssetCsvEra(c.generatedDthVersion) !== poseAssetCsvEra(app.dthRelease) ||
+        c.generatedCsvTemplates !== app.csvTemplates),
   }
 }
 
@@ -1655,7 +1682,12 @@ export async function detectAssetVersions(): Promise<AssetVersionReport> {
   const catalog = await fetchPoseAssetsCurrent()
   const activeRelease = catalog.error ? '' : catalog.version
   const hasDthRelease = activeRelease !== ''
-  const app = { schema: CHARACTER_SCHEMA_VERSION, runtime: RUNTIME_VERSION, dthRelease: activeRelease }
+  const app = {
+    schema: CHARACTER_SCHEMA_VERSION,
+    runtime: RUNTIME_VERSION,
+    dthRelease: activeRelease,
+    csvTemplates: poseAssetTemplatesFingerprint(),
+  }
 
   // Scope follows the window: the active project in a project window, every known
   // project (recents) from the Home window — see projectsForSweep.
@@ -1683,6 +1715,7 @@ export async function detectAssetVersions(): Promise<AssetVersionReport> {
     schemaVersion: g.character.schemaVersion,
     runtimeVersion: runtimeInfos[i]?.version ?? null,
     generatedDthVersion: g.character.generatedDthVersion,
+    generatedCsvTemplates: g.character.generatedCsvTemplates,
     hasScene: Boolean(g.character.scenePath),
     scanDimPath: runtimeInfos[i]?.scanDimPath ?? null,
   }))

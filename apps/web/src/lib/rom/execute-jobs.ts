@@ -1159,6 +1159,7 @@ const SIGNATURE_EXCLUDED_FIELDS = new Set<string>([
   'updatedAt',
   'studioVersion',
   'generatedDthVersion',
+  'generatedCsvTemplates',
   'schemaVersion',
   'houdiniProjects',
   'sceneOverrides',

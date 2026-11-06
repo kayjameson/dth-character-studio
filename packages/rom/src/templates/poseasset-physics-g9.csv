@@ -7,7 +7,7 @@ PHY,4,BreastIn,5.0,0.0,0.0
 PHY,5,BreastInDown,3.5,-3.5,0.0
 PHY,6,BreastDown,0.0,-5.0,0.0
 PHY,7,BreastOutDown,-3.5,-3.5,0.0
-PHY,8,BreastHangForward,11.0,0.0,-5.0
+PHY,8,BreastHangForward,0.0,0.0,-5.0
 PHYGROUP,0,2,breast_r,5.0,5.0
 PHY,9,BreastOut,5.0,0.0,0.0
 PHY,10,BreastOutUp,3.5,3.5,0.0

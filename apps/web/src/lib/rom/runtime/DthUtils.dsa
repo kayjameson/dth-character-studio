@@ -1630,7 +1630,11 @@ function memorizeRawMorphsAtFrame0(oNodes){
 // exact for a ROM pose (raw 0), a character shape driven over ERC (raw 0, left
 // as it is) and dialed geograft shaping (raw -1, held). Neither passed: the old
 // getValue(0) behaviour, unchanged.
-function closeDanglingMorphKeys(oNodes, iBoundaryFrame, baselineValues, rawBaseline){
+// `ownedRawBaseline` (optional, root close-out only): a memorizeRawMorphsAtFrame0
+// snapshot that only widens what counts as character-owned next to
+// `baselineValues`. A dial CANCELLED over ERC evaluates 0 and so read as a ROM
+// pose (raw -1 + a character control's +1 = value 0): raw non-zero is owned too.
+function closeDanglingMorphKeys(oNodes, iBoundaryFrame, baselineValues, rawBaseline, ownedRawBaseline){
 	var timeStep = Scene.getTimeStep();
 	var tBoundary = iBoundaryFrame * timeStep;
 	var iClosed = 0;
@@ -1679,6 +1683,11 @@ function closeDanglingMorphKeys(oNodes, iBoundaryFrame, baselineValues, rawBasel
 			// base ROM only borrowed it. Re-keying it here is exactly what doubled
 			// the value; leave character-owned morphs alone, close only ROM poses.
 			if(bHasBaseline && !approx_eq(fBaseValue, 0)) continue;
+			// The same ownership, for a dial the evaluated baseline cannot see: closing
+			// a cancelled dial to its evaluated 0 walks it away from its raw value, and
+			// the DTH Exporter then drops the varying morph from the FBX base mesh.
+			if(ownedRawBaseline && ownedRawBaseline.values && ownedRawBaseline.values[sKey] !== undefined
+				&& !approx_eq(ownedRawBaseline.values[sKey], 0)) continue;
 			if(approx_eq(oProp.getKeyValue(iLastKey), fBaseValue)) continue;
 			oProp.setValue(tBoundary, fBaseValue);
 			verbose("Closed dangling key:", oProp.getLabel(), "back to", fBaseValue, "at frame", iBoundaryFrame);
@@ -1686,6 +1695,149 @@ function closeDanglingMorphKeys(oNodes, iBoundaryFrame, baselineValues, rawBasel
 		}
 	}
 	print("Closed", iClosed, "dangling morph key(s) at frame", iBoundaryFrame);
+}
+
+/**
+ * RAW values of every morph on the given figures at frame `iFrame` (runtime
+ * v107) - memorizeRawMorphsAtFrame0's read at an arbitrary frame. Taken right
+ * BEFORE a preset block loads, at the frame just before the block, it is the
+ * value each morph has to be holding when the block begins; anchorBlockHeadKeys
+ * reads it back after the load. memorizeRawMorphsAtFrame0 stays a function of
+ * its own: the follower close-outs read it and runtime.test.ts pins its text.
+ * Same `raw` flag, same evaluated fallback for a build without getRawValue.
+ */
+function memorizeRawMorphsAtFrame(oNodes, iFrame){
+	var tFrame = iFrame * Scene.getTimeStep();
+	// `lastKeys`: each morph's last key TIME before the block loads (-1 when
+	// unkeyed) - how anchorBlockHeadKeys tells a key the block itself made from
+	// one an earlier pass left at the boundary (the base close-out keys the
+	// root at the very frame a physics block right after it starts on).
+	var oSnapshot = { raw: true, frame: iFrame, values: {}, lastKeys: {} };
+	for(var x = 0; x < oNodes.length; x++){
+		var oNode = oNodes[x];
+		if(!oNode) continue;
+		var oObj = oNode.getObject();
+		if(!oObj) continue;
+		for(var i = 0; i < oObj.getNumModifiers(); i++){
+			var oMod = oObj.getModifier(i);
+			if(!oMod || !oMod.inherits("DzMorph")) continue;
+			var oProp = oMod.getValueControl();
+			if(!oProp) continue;
+			var fRaw = (typeof oProp.getRawValue == "function") ? oProp.getRawValue(tFrame) : undefined;
+			if(typeof fRaw != "number"){
+				oSnapshot.raw = false;
+				fRaw = oProp.getValue(tFrame);
+			}
+			oSnapshot.values[oMod.getName()] = fRaw;
+			var iKeys = oProp.getNumKeys();
+			oSnapshot.lastKeys[oMod.getName()] = iKeys > 0 ? oProp.getKeyTime(iKeys - 1) : -1;
+		}
+	}
+	return oSnapshot;
+}
+
+/** Whether `oProp` holds a key at time `tTime` (times are whole ticks; half a
+ *  frame of slack absorbs float noise without reaching the neighbour frame). */
+function dthHasKeyAt(oProp, tTime){
+	var tSlack = Scene.getTimeStep() / 2;
+	for(var k = 0; k < oProp.getNumKeys(); k++){
+		if(Math.abs(oProp.getKeyTime(k) - tTime) < tSlack) return true;
+	}
+	return false;
+}
+
+/**
+ * Anchor a loaded preset block's HEAD (runtime v107) - the complement of
+ * closeDanglingMorphKeys, which closes the tail at the block END.
+ *
+ * A pose preset keys only inside its own range, so a morph whose FIRST key in
+ * the block is not the value it held before the block ramps into it from
+ * wherever its previous key sits. The stock G9 Physics Example does exactly
+ * that: dth_phy_breast_out_l is keyed 1 at relative frame 0 (measured 2026-11-06
+ * from the .duf: (0,1),(1,1),(2,0),...; the other 22 channels start (0,0)).
+ * Daz's implicit frame-0 key plus the LINEAR stamp turned that into a 0->1 ramp
+ * across every JCM/FAC/GEN frame before the block, baking a left-breast delta
+ * into every shape Houdini derived from them.
+ *
+ * Runs AFTER the load, not as a pre-load fence: setValue of an unchanged value
+ * creates no key (measured - see dthEnsureFrameZeroKey), and before the load
+ * the value at startFrame-1 IS the pre-block value. After the load the ramp has
+ * moved it, so the write lands; the key is read back anyway, with the nudge
+ * fallback for a CONSTANT-held neighbour (value unchanged, no key made), and a
+ * head that still cannot be keyed is a run-log ERROR: that ramp makes every
+ * earlier pose frame wrong, which is exactly what the export gate exists for.
+ *
+ * `oPreBlock` is memorizeRawMorphsAtFrame([..], startFrame-1), taken before
+ * the load. RAW, so an ERC share is never keyed a second time (the rule the
+ * raw close-outs follow) and a character-owned dial is held at its OWN value
+ * rather than forced to 0; a build without getRawValue leaves driven morphs
+ * alone. Only a morph the block keyed at or past its start, whose first block
+ * key differs from that value, and which holds no key at the head frame yet,
+ * gets one. Nothing is hard-coded to a morph name: a user-supplied physics
+ * preset with a different leading pose is anchored the same way. A block
+ * starting at frame 0 has no head frame and nothing to do.
+ */
+function anchorBlockHeadKeys(oNodes, iStartFrame, oPreBlock){
+	if(iStartFrame < 1 || !oPreBlock || !oPreBlock.values) return 0;
+	var timeStep = Scene.getTimeStep();
+	var tStart = iStartFrame * timeStep;
+	var tHead = (iStartFrame - 1) * timeStep;
+	var iInterp = dthLinearInterp();
+	var iAnchored = 0;
+	for(var x = 0; x < oNodes.length; x++){
+		var oNode = oNodes[x];
+		if(!oNode) continue;
+		var oObj = oNode.getObject();
+		if(!oObj) continue;
+		for(var i = 0; i < oObj.getNumModifiers(); i++){
+			var oMod = oObj.getModifier(i);
+			if(!oMod || !oMod.inherits("DzMorph")) continue;
+			var oProp = oMod.getValueControl();
+			if(!oProp || oProp.getNumKeys() < 1) continue;
+			var sKey = oMod.getName();
+			if(oPreBlock.values[sKey] === undefined) continue;
+			// Only keys the BLOCK made: a morph that already reached the start
+			// frame before the load (the base close-out's key at 328, with a
+			// physics block starting right there) is another pass's boundary.
+			if(oPreBlock.lastKeys && oPreBlock.lastKeys[sKey] !== undefined
+				&& oPreBlock.lastKeys[sKey] > tStart - timeStep / 2) continue;
+			// The block's first key (at or past its start), and whether the head
+			// frame is keyed already - a block boundary another pass manages.
+			var iFirst = -1;
+			var bHeadKeyed = false;
+			for(var k = 0; k < oProp.getNumKeys(); k++){
+				var tKey = oProp.getKeyTime(k);
+				if(Math.abs(tKey - tHead) < timeStep / 2) bHeadKeyed = true;
+				if(tKey > tStart - timeStep / 2){ iFirst = k; break; }
+			}
+			if(iFirst < 0 || bHeadKeyed) continue;
+			var fBefore = oPreBlock.values[sKey];
+			if(approx_eq(oProp.getKeyValue(iFirst), fBefore)) continue;
+			// Evaluated fallback (no getRawValue): a driven morph's value carries
+			// its controller's share - keying it would double-apply. Leave those.
+			if(!oPreBlock.raw && typeof oProp.getNumControllers == "function" && oProp.getNumControllers() > 0) continue;
+			// Same DS6 "keep limits?" guard as the raw close-out: unclamp only a
+			// value outside the property's limits (the flag holds on every frame).
+			var bOutsideLimits = (typeof oProp.getMin == "function" && typeof oProp.getMax == "function")
+				? (fBefore < oProp.getMin() || fBefore > oProp.getMax()) : true;
+			if(bOutsideLimits && typeof oProp.setIsClamped === "function") oProp.setIsClamped(false);
+			dthSetValueInterp(oProp, tHead, fBefore, iInterp);
+			if(!dthHasKeyAt(oProp, tHead)){
+				dthSetValueInterp(oProp, tHead, fBefore + DTH_INTERP_NUDGE, iInterp);
+				dthSetValueInterp(oProp, tHead, fBefore, iInterp);
+			}
+			if(!dthHasKeyAt(oProp, tHead)){
+				logRunError("Block head anchor: no key could be made on " + oProp.getLabel() + " at frame " +
+					(iStartFrame - 1) + " - its first key in the block at frame " + iStartFrame +
+					" (" + oProp.getKeyValue(iFirst) + ") ramps in from the frames before it.");
+				continue;
+			}
+			verbose("Anchored block head:", oProp.getLabel(), "at", fBefore, "on frame", iStartFrame - 1);
+			iAnchored++;
+		}
+	}
+	print("Anchored", iAnchored, "block head key(s) at frame", iStartFrame - 1);
+	return iAnchored;
 }
 
 /**

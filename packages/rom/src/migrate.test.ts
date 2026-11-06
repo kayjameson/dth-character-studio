@@ -1343,3 +1343,10 @@ describe('characterSchema — v37 adds the per-scene hair-export switch', () => 
     expect(again).toEqual(parsed)
   })
 })
+
+describe('v39 generatedCsvTemplates', () => {
+  it('is additive: a v38 definition gets no step, and zod supplies the default', () => {
+    const migrated = migrateCharacterData({ sections: {}, schemaVersion: 38 })
+    expect(migrated.generatedCsvTemplates).toBeUndefined()
+  })
+})

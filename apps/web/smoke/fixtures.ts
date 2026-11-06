@@ -12,6 +12,7 @@ import {
   RUNTIME_VERSION,
   characterSchema,
 } from '../../../packages/rom/src/types.ts'
+import { templatesFingerprint } from '../../../packages/rom/src/csv-fingerprint.ts'
 
 // Same reason as the schema above: the specs that seed a Houdini scan store
 // must build the CURRENT freshness key, and three of them used to hard-code its
@@ -321,6 +322,23 @@ export interface SeedOptions {
   emptyProject?: boolean
 }
 
+/** The fingerprint the app computes, read from the template files directly
+ *  (the app's own copy is a Vite-only `?raw` import). */
+function currentCsvTemplates(): string {
+  const dir = joinNodePath(
+    dirname(fileURLToPath(import.meta.url)),
+    '../../../packages/rom/src/templates',
+  )
+  const names = [
+    'poseasset-g9-dqs-jcmfac-gp-ue5.csv',
+    'poseasset-g8.1-dqs-jcmfac-ue5.csv',
+    'poseasset-physics-g9.csv',
+  ]
+  return templatesFingerprint(
+    Object.fromEntries(names.map((n) => [n, readFileSync(joinNodePath(dir, n), 'utf8')])),
+  )
+}
+
 export function buildSeed(opts: SeedOptions = {}): TauriMockSeed {
   const character = characterSchema.parse({
     schemaVersion: CHARACTER_SCHEMA_VERSION,
@@ -333,6 +351,7 @@ export function buildSeed(opts: SeedOptions = {}): TauriMockSeed {
     // CSV provenance matches the active release's era — keeps the startup
     // staleness probe from redirecting the whole window to /tools.
     generatedDthVersion: DTH_VERSION,
+    generatedCsvTemplates: currentCsvTemplates(),
     // ALWAYS linked (the scene file + tip are seeded unconditionally below): a
     // scene-less character locks the whole editor now, which would freeze every
     // smoke that edits ROM/identity. The sceneless state has its own spec

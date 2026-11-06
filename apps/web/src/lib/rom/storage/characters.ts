@@ -1112,16 +1112,18 @@ export async function moveCharacter(
 }
 
 /**
- * Stamp the DTH release a character's PoseAsset CSV was just generated for into
- * its definition JSON (the `generatedDthVersion` provenance). Writes the RAW
- * stored JSON back with only that one field updated — it never migrates / re-stamps
- * the rest — so generating the CSV records its era without disturbing anything
- * else. No-op when the character can't be found or the value is unchanged.
+ * Stamp the DTH release and the template fingerprint a character's PoseAsset CSV
+ * was just generated from into its definition JSON (the `generatedDthVersion` +
+ * `generatedCsvTemplates` provenance). Writes the RAW stored JSON back with only
+ * those fields updated — it never migrates / re-stamps the rest — so generating
+ * the CSV records its origin without disturbing anything else. No-op when the
+ * character can't be found or both values are unchanged.
  */
 export async function setGeneratedDthVersion(
   lib: string,
   id: string,
   version: string,
+  templates: string,
   // Known definition path (a caller that already resolved the location) — skips a scan.
   definitionAbs?: string,
 ): Promise<void> {
@@ -1133,7 +1135,8 @@ export async function setGeneratedDthVersion(
   } catch {
     return
   }
-  if (raw.generatedDthVersion === version) return
+  if (raw.generatedDthVersion === version && raw.generatedCsvTemplates === templates) return
   raw.generatedDthVersion = version
+  raw.generatedCsvTemplates = templates
   await writeTextFileAtomic(defAbs, JSON.stringify(raw, null, 2) + '\n')
 }

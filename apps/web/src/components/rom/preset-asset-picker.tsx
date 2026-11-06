@@ -21,7 +21,7 @@ export const PRESET_DESCRIPTIONS: Partial<Record<RomSection, string>> = {
   JCM: 'Pre-defined DTH base ROM (DQS / linear).',
   FAC: "Loads DTH's pre-defined face ROM. On Genesis 9 the mouth is a separate fitted figure, so its companion Mouth ROM is applied automatically at the same frames.",
   GEN: 'Pre-defined genitalia ROM.',
-  PHY: 'Pre-defined physics example ROM. Map its poses in the PoseAsset node manually for now.',
+  PHY: 'Pre-defined physics example ROM. Its PoseAsset rows (driver bones, push directions) are generated into the CSV; tick the physics bones on the Houdini Skeleton node yourself.',
 }
 
 // Radix Select forbids an empty-string item value, so the "auto" asset choice

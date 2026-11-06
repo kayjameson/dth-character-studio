@@ -55,7 +55,7 @@ const RUNTIME_ASSETS = [
 // Bump this together with RUNTIME_VERSION whenever a runtime file legitimately
 // changes (this run prints the new value in the failure message).
 const EXPECTED_RUNTIME_HASH =
-  '00f94011d1e2ea5b049034c9220e1137f4cc9a75aa6c34293a3393809f317e30'
+  '9dfe4550cce88b739c86255f3ed4e0909fa27128e306062f7d91ac0fb2de2f73'
 
 function runtimeHash(): string {
   const dir = join(dirname(fileURLToPath(import.meta.url)), 'runtime')
@@ -109,7 +109,7 @@ describe('bundled DTH runtime (.dsa)', () => {
     const dir = join(dirname(fileURLToPath(import.meta.url)), 'runtime')
     const workflow = readFileSync(join(dir, 'DthWorkflow.dsa'), 'utf8')
     const calls = [...workflow.matchAll(/closeDanglingMorphKeys\(([^;]*)\);/g)].map((m) => m[1])
-    expect(calls.length).toBe(4)
+    expect(calls.length).toBe(5)
     for (const args of calls) {
       // (nodes, boundary, evaluatedBaseline, rawBaseline) — never the 2-arg form.
       expect(args.split(',').length, `close-out without a baseline: closeDanglingMorphKeys(${args})`).toBeGreaterThanOrEqual(3)
@@ -117,6 +117,9 @@ describe('bundled DTH runtime (.dsa)', () => {
     expect(workflow).toContain('closeDanglingMorphKeys([oNodeMouth], iAfterBase, null, mouthRawBase)')
     expect(workflow).toContain('closeDanglingMorphKeys([oNodeGP], startFrame + gpFrameCount, null, oRawBase)')
     expect(workflow).toContain('closeDanglingMorphKeys([oNodeDk9], startFrame + dk9FrameCount, null, oRawBase)')
+    // The physics block keys the ROOT figure, so its close-out takes the root's
+    // own two baselines (runtime v107) — see physics-block.test.ts.
+    expect(workflow).toContain('closeDanglingMorphKeys([oNodeRoot], startFrame + physFrameCount, baseMorphValues, null, rootRawBase)')
     // The snapshots are taken before the first preset block loads anything.
     const firstPreset = workflow.indexOf('ApplyDefaultROMs(options, oNodeRoot, oNodeMouth)')
     for (const snap of [
@@ -142,6 +145,73 @@ describe('bundled DTH runtime (.dsa)', () => {
     // holds on every frame, so an unconditional unclamp would let ROM + ERC
     // overshoot on frames the close-out never touched.
     expect(utils).toMatch(/if\(bOutsideLimits && typeof oProp\.setIsClamped === "function"\)/)
+  })
+
+  // Runtime v106. Measured 2026-11-06 on a G9 character mixing a preset control
+  // with its own shape dials cancelled (MB_Quella_figure_ctrl_Character 1 drives
+  // MB_Quella_Body_bs_body +1, the dial sits at raw -1, so value 0). The root
+  // close-out's EVALUATED baseline read that as a ROM pose and keyed it to 0 at
+  // the base-ROM end. The now-varying dial was dropped from the FBX base mesh.
+  it('leaves an ERC-cancelled dial out of the root close-out, and still closes real ROM poses', () => {
+    const dir = join(dirname(fileURLToPath(import.meta.url)), 'runtime')
+    const utils = readFileSync(join(dir, 'DthUtils.dsa'), 'utf8')
+    const start = utils.indexOf('function closeDanglingMorphKeys(')
+    const fn = utils.slice(start, utils.indexOf('\n}\n', start) + 3)
+
+    const written: Array<[string, number, number]> = []
+    const morph = (name: string, lastKey: number) => ({
+      inherits: () => true,
+      getName: () => name,
+      getValueControl: () => ({
+        getNumKeys: () => 1,
+        getKeyTime: () => 0,
+        getKeyValue: () => lastKey,
+        getLabel: () => name,
+        setValue: (time: number, value: number) => written.push([name, time, value]),
+      }),
+    })
+    const modifiers = [
+      morph('CancelledDial', -1), // raw -1, a control's +1: evaluates 0
+      morph('RomPose', 1), // a preset's dangling pose: raw 0, evaluates 0
+      morph('OwnedDial', 0.5), // a plain character dial: raw and value 0.5
+    ]
+    const node = {
+      getObject: () => ({
+        getNumModifiers: () => modifiers.length,
+        getModifier: (i: number) => modifiers[i],
+      }),
+    }
+    const close = runInNewContext(`${fn};closeDanglingMorphKeys`, {
+      Scene: { getTimeStep: () => 160 },
+      approx_eq: (a: number, b: number) => Math.abs(a - b) < 1e-5,
+      verbose: () => {},
+      print: () => {},
+    }) as (
+      nodes: Array<unknown>,
+      frame: number,
+      evaluated: Record<string, number>,
+      raw: null,
+      owned?: { raw: boolean; values: Record<string, number> },
+    ) => void
+
+    const evaluated = { CancelledDial: 0, RomPose: 0, OwnedDial: 0.5 }
+    close([node], 328, evaluated, null, {
+      raw: true,
+      values: { CancelledDial: -1, RomPose: 0, OwnedDial: 0.5 },
+    })
+    expect(written).toEqual([['RomPose', 328 * 160, 0]])
+
+    // The evaluated baseline alone is the bug this pins: it closes the dial too.
+    written.length = 0
+    close([node], 328, evaluated, null)
+    expect(written.map(([name]) => name)).toEqual(['CancelledDial', 'RomPose'])
+
+    // The root close-out passes the raw snapshot, taken before any preset loads.
+    const workflow = readFileSync(join(dir, 'DthWorkflow.dsa'), 'utf8')
+    expect(workflow).toContain('closeDanglingMorphKeys([oNodeRoot], iAfterBase, baseMorphValues, null, rootRawBase)')
+    const snapshot = workflow.indexOf('memorizeRawMorphsAtFrame0([oNodeRoot])')
+    expect(snapshot).toBeGreaterThan(-1)
+    expect(snapshot).toBeLessThan(workflow.indexOf('ApplyDefaultROMs(options, oNodeRoot, oNodeMouth)'))
   })
 
   // Daz cannot carry non-ASCII out of a script (measured 2026-08-14, DS4 4.24:

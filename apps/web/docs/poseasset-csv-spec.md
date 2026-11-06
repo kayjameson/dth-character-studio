@@ -134,7 +134,31 @@ block. 5 groups / 43 poses, all `PHYGROUP,0,<suffix>,<bone>,5.0,5.0`:
 `PHY` rows are `PHY,<frame>,<name>,<x>,<y>,<z>`, XYZ being the push direction —
 an 8-point circle of radius 5 in the bone's plane (Out `±5,0,0`, Up `0,5,0`, In,
 Down, …) plus `HangForward` (`…,0,-5`). Left/right groups mirror X. The glute
-*Up* pose (`0,5,0`) is named `GluteUp`.
+*Up* pose (`0,5,0`) is named `GluteUp`. The June 13 export carried `11.0` in X on
+the left breast's `BreastHangForward` row — mirrored by nothing (breast_r reads
+`-0.0`, stomach `0.0`), so it was corrected to `0.0` on 2026-11-06 by the mirror
+rule. That value is **derived**, not re-exported: DTH ships no PHY-filled
+PoseAsset preset (every shipped `DazToHuePoseAsset.idx` preset has
+`pose_asset_phy_group 0`) that could confirm it. `generate.test.ts` pins the
+mirror property over the whole block.
+
+**The node's CSV reader tolerates missing columns** (read off the installed
+`DazToHue.hda`'s import code, 2026-11-06): every `PHYGROUP`/`PHY` column past
+the keyword is guarded `if N < len(row): if row[N]: …set(row[N])`, so a row with
+no offsets/radius/XYZ — the studio's custom-PHY rows — imports with the node's
+defaults for those parms and does not fail. (The video guide says the same of
+the UI: "only frame and name are mandatory".) The targets then coincide until
+offsets are set in Houdini or Unreal.
+
+**The driver bones are the Skeleton node's to add, and the studio does not set
+them.** The `breast_l/r`, `glute_l/r` and `stomach` bones the PHY groups name
+exist only once `DazToHueSkeleton`'s toggles are on — read off the installed
+`DazToHue.hda`'s DialogScript (2026-11-06): `skeleton_auto_add_breast_bones_ue`,
+`skeleton_auto_add_glute_bones_ue`, `skeleton_auto_add_stomach_bones_ue` (all
+`type toggle`, default 0, labels *Add Breast/Glute/Stomach Physics Bones*; the
+toggle's callback sizes the `…_position_offsets` multiparm to `…_total`). NOT
+wired into the project prefill and NOT verified live — whether a headless `set`
+yields bones with those names is unmeasured. The user ticks them in Houdini.
 
 ## Consequences for the studio model
 

@@ -1453,3 +1453,56 @@ v105 — the mouth and the GP/DK geograft close-outs hold the character's
       carries GP9, not DK9, so the DK half is unmeasured. The raw close
       unclamps a morph only when its raw base sits outside the property's
       limits (the flag holds on every frame, not just the closing key).
+v106 — the base-ROM ROOT close-out leaves ERC-cancelled dials alone. Measured
+      2026-11-06 (G9 + GP9, DTH 2.5.1): MB_Quella_figure_ctrl_Character 1 drives
+      MB_Quella_Body_bs_body and _Head_bs_head +1, both dialed to raw -1, so both
+      evaluate 0. v105 left the root on its EVALUATED baseline, which read those
+      as ROM poses and keyed them to 0 at frame 328. The now-varying dials were
+      dropped from the FBX base mesh (see gotchas-daz.md), leaving the control's
+      +1 and an FBX shape the Alembic did not share. `closeDanglingMorphKeys`
+      takes an optional `ownedRawBaseline` (the root's memorizeRawMorphsAtFrame0
+      snapshot): a raw non-zero morph counts as character-owned. It only ADDS to
+      what is left alone; a real ROM pose (raw 0, value 0) still closes. The root
+      keeps the evaluated close, not the raw-to-raw one the followers use.
+      Regenerated scripts only - no migration.
+v107 — the PHYSICS block is fenced at both ends. Measured 2026-11-06 by parsing
+      DTH 2.5.1's `G9 Physics Example.duf` (43 frames, 23 `dth_phy_*`
+      channels, every key LINEAR): `dth_phy_breast_out_l` starts (0,1),(1,1),
+      (2,0) relative to the block while the other 22 start (0,0), and
+      `dth_phy_stomach_hang` ends (41,0),(42,1) with nothing after the last
+      frame. A ROM .duf dump of a v106 build confirmed both on the timeline:
+      breast_out_l = (0,0),(432,1),... - a 0->1 ramp across every JCM/FAC/GEN
+      frame once the LINEAR pass stamped it - and stomach_hang = ...,(474,1)
+      held through every FBM/MISC frame (seen: frame 475 = Emaciated + belly,
+      476 = belly on the base). `ApplyPhysics` was the one preset block with
+      no `closeDanglingMorphKeys`, and no block had a HEAD fence at all. Now:
+      `memorizeRawMorphsAtFrame` reads the root's RAW values at startFrame-1
+      before the load, `anchorBlockHeadKeys` keys them back there AFTER the
+      load for any morph whose first block key differs (after, because
+      setValue of an unchanged value makes no key - a pre-load fence cannot
+      work; read back, nudged if needed, run-log error if still unkeyed), and
+      the tail closes at startFrame+43 against the root's own baselines
+      (baseMorphValues + rootRawBase, threaded into ApplyPhysics). The close
+      frame is the range end setTotalFrames already reserved - the first
+      custom frame when FBM/MISC follow - so the ROM does not grow and the
+      CSV offsets are unchanged. CORRECTION to the v26 entry: "tails never
+      leaking is behavior now" held for the base, DK and GP blocks only; the
+      physics tail leaked from v26 through v106. Also in this bump, with no
+      runtime-file change of its own: the fixed PHY CSV block's left-breast
+      HangForward row reads `0.0,0.0,-5.0` (the June 13 node export carried a
+      stray `11.0` in X - DERIVED by the left/right mirror rule, DTH ships no
+      PHY-filled PoseAsset preset to confirm it). The Skeleton node's physics
+      bones stay a manual tick (see poseasset-csv-spec.md for the measured
+      parm names). Regenerated scripts + CSVs only - no migration.
+v39 (schema) — `generatedCsvTemplates`: fingerprint of the PoseAsset templates a
+      character's CSV was generated from (`poseAssetTemplatesFingerprint`).
+      Additive with a '' default, so no migration step; '' reads as stale, and
+      Refresh's regeneration stamps the real value. A mismatch sets the `csv`
+      stale target. Before this, only a DTH-era change flagged a CSV, and a
+      runtime bump regenerated scripts alone, so a template fix never reached an
+      existing CSV. Same change: `assertDevSourcesFresh` (dev only). Measured
+      2026-11-06: the dev server's watcher missed one `?raw` template edit for 71
+      minutes while all other modules reloaded (the webview cache holds no
+      template fetch stamped before 16:02:45, against 14:51:10-12 for the rest),
+      and one generation paired v107 scripts with the old template's CSV. Why the
+      event was missed is unknown: a clean server caught 25 of 25 stress edits.

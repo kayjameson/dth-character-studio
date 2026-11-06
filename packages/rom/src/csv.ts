@@ -30,6 +30,26 @@ import poseAssetTemplateG81DqsFac from './templates/poseasset-g8.1-dqs-jcmfac-ue
 // push-direction XYZ and group offset/radius, ground-truth from a node export.
 // Relative frames 0-42; renumbered to absolute on emit.
 import poseAssetPhysicsG9 from './templates/poseasset-physics-g9.csv?raw'
+import { templatesFingerprint } from './csv-fingerprint'
+
+/**
+ * Every template the PoseAsset CSV is built from (file name -> raw text). Its
+ * fingerprint is stamped on a character when its CSV is generated, so a changed
+ * template makes that CSV stale; the dev guard also compares these loaded texts
+ * with the files on disk.
+ */
+export const POSE_ASSET_TEMPLATES: Readonly<Record<string, string>> = {
+  'poseasset-g9-dqs-jcmfac-gp-ue5.csv': poseAssetTemplateG9DqsFacGp,
+  'poseasset-g8.1-dqs-jcmfac-ue5.csv': poseAssetTemplateG81DqsFac,
+  'poseasset-physics-g9.csv': poseAssetPhysicsG9,
+}
+
+/** Fingerprint of the templates this build generates from. */
+export function poseAssetTemplatesFingerprint(
+  templates: Readonly<Record<string, string>> = POSE_ASSET_TEMPLATES,
+): string {
+  return templatesFingerprint(templates)
+}
 
 /**
  * The PoseAsset-CSV pipeline: the validated-template gate, the template splice,

@@ -1310,6 +1310,52 @@ describe('toPoseAssetCsv', () => {
     expect(lines).toContain('PHY,460,GluteUp,0.0,5.0,0.0')
     expect(lines).toContain('PHY,474,StomachHangForward,0.0,0.0,-5.0')
     expect(lines).toContain('FBM,475,BodyTone,')
+    // The left breast's HangForward push is straight forward, like the right
+    // breast's and the stomach's. The June 13 node export carried `11.0` in X
+    // on this one row — mirrored by nothing (breast_r reads `-0.0`), so it was
+    // a stray value, not a measurement. DERIVED by the mirror rule below; DTH
+    // ships no PHY-filled PoseAsset preset that could confirm it.
+    expect(lines).toContain('PHY,440,BreastHangForward,0.0,0.0,-5.0')
+    expect(lines).toContain('PHY,449,BreastHangForward,-0.0,0.0,-5.0')
+  })
+
+  it('the fixed PHY block mirrors every left/right pair in X and nowhere else', () => {
+    // The physics block is a hand-maintained template; this is the one
+    // structural property it has (the spec: "Left/right groups mirror X"), and
+    // the stray BreastHangForward X above is exactly what it catches.
+    const sections = makeSections()
+    sections.GEN.enabled = true
+    sections.PHY.enabled = true
+    sections.PHY.mode = 'preset'
+    const lines = toPoseAssetCsv(makeCharacter({ sections }), FRAMES, '2.0').content.trimEnd().split('\n')
+    const groups: Array<{ bone: string; poses: Array<[string, number, number, number]> }> = []
+    for (const line of lines) {
+      const cols = line.split(',')
+      if (cols[0] === 'PHYGROUP') groups.push({ bone: cols[3], poses: [] })
+      else if (cols[0] === 'PHY')
+        groups[groups.length - 1].poses.push([cols[2], Number(cols[3]), Number(cols[4]), Number(cols[5])])
+    }
+    expect(groups.map((g) => g.bone)).toEqual(['breast_l', 'breast_r', 'glute_l', 'glute_r', 'stomach'])
+    for (const [left, right] of [['breast_l', 'breast_r'], ['glute_l', 'glute_r']]) {
+      const l = groups.find((g) => g.bone === left)!.poses
+      const r = groups.find((g) => g.bone === right)!.poses
+      expect(r.map(([name]) => name)).toEqual(l.map(([name]) => name))
+      for (let i = 0; i < l.length; i++) {
+        // X negated, Y and Z carried over. `+ 0` folds the template's `-0.0`
+        // into +0: toEqual tells the two zeros apart, the HDA does not.
+        const [, rx, ry, rz] = r[i]
+        expect([rx + 0, ry, rz], `${left}/${right} ${l[i][0]}`).toEqual([-l[i][1] + 0, l[i][2], l[i][3]])
+      }
+    }
+    // Every push sits on the radius-5 circle (or straight forward), nothing else.
+    for (const g of groups) {
+      for (const [name, x, y, z] of g.poses) {
+        // The diagonals are ±3.5/±3.5 (hypot 4.95), the template's rounding of 5/√2.
+        const onCircle = Math.abs(Math.hypot(x, y) - 5) < 0.1 && z === 0
+        const forward = x === 0 && y === 0 && z === -5
+        expect(onCircle || forward, `${g.bone} ${name} (${x},${y},${z})`).toBe(true)
+      }
+    }
   })
 
   it('falls back to custom-only rows with index-based group headers off-template', () => {

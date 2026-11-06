@@ -105,6 +105,20 @@ Part of the gotchas set — `.ai/gotchas.md` is the index. Learned by measuremen
   won't happen (Remo's call, 2026-08-25 — same read as the declined HDA
   feature pitches), so the runtime pass is the PERMANENT fix, not a stopgap —
   don't re-pitch the report; any mention of these presets stays private.
+- **The G9 Physics Example preset starts one morph at 1 and ends one at 1 —
+  a loaded block's head AND tail are the runtime's to fence.** Measured
+  2026-11-06 by parsing DTH 2.5.1's `G9 Physics Example.duf` (43 frames, 23
+  `dth_phy_*` channels, every key LINEAR): `dth_phy_breast_out_l` is keyed
+  `(0,1),(1,1),(2,0)` relative to the block start (the other 22 start `(0,0)`)
+  and `dth_phy_stomach_hang` ends `(41,0),(42,1)` with no key after the last
+  frame. Loaded at 432, Daz's implicit frame-0 key plus the LINEAR stamp ramped
+  the left breast 0→1 across every JCM/FAC/GEN frame, and the stomach hang
+  held at 1 through every FBM/MISC frame (user-confirmed on a real ROM: 475 =
+  Emaciated + belly, 476 = belly). Runtime v107 fences both in `ApplyPhysics`:
+  `anchorBlockHeadKeys` keys the pre-block RAW value at startFrame-1 AFTER the
+  load — a pre-load fence cannot work, `setValue` of an unchanged value makes
+  no key — and `closeDanglingMorphKeys` closes the tail. A pose preset keys
+  only inside its own range; nothing about either edge is the preset's doing.
 - **The DTH Exporter can walk every ROM frame while the scene never
   re-evaluates — the export "succeeds" as a statue.** Measured 2026-08-25
   (Ita/G9, DS4 4.24, exporter DLL 2.1.9): a 2m48s "successful" export whose

@@ -120,6 +120,15 @@ const VISIBLE_SCAN_SCRIPTS: Record<string, string> = {
   'Kill_Animation.dsa': killAnimationScript,
 }
 
+/** Every bundled runtime source (file name on disk -> raw text), for the dev
+ *  guard that compares what this app loaded with the files on disk. */
+export const RUNTIME_RAW_SOURCES: Readonly<Record<string, string>> = {
+  ...RUNTIME_FILES,
+  ...VISIBLE_SCAN_SCRIPTS,
+  'Build_Genesis_Index_Bulk.dsa': buildGenesisIndexBulkScript,
+  'Scan_Scene_Bulk.dsa': scanSceneBulkScript,
+}
+
 /** Root-level scripts installed like the visible ones (as-is + app-data path
  *  baked in) but under a HIDDEN name — automation entry points, not Content
  *  Library tiles, so they get no artwork and no un-prefixed copy. */

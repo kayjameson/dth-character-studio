@@ -138,6 +138,9 @@ function ApplyDTHWorkflow(options){
 	var mouthRawBase = oNodeMouth ? memorizeRawMorphsAtFrame0([oNodeMouth]) : null;
 	var gpRawBase = oNodeGP ? memorizeRawMorphsAtFrame0([oNodeGP]) : null;
 	var dk9RawBase = oNodeDk9 ? memorizeRawMorphsAtFrame0([oNodeDk9]) : null;
+	// The root's RAW snapshot only tells the base-ROM close-out which dials the
+	// character owns (v106): an ERC-cancelled dial evaluates 0 in baseMorphValues.
+	var rootRawBase = memorizeRawMorphsAtFrame0([oNodeRoot]);
 
 	/**       *****************************************************/
 	if(options.bIncludeJCM)
@@ -170,7 +173,7 @@ function ApplyDTHWorkflow(options){
 		// key - the shape twice on every frame from here on, ramping in from
 		// frame 0 (teeth deformed in every exported shape, runtime v105).
 		var iAfterBase = Scene.getAnimRange().end / Scene.getTimeStep();
-		closeDanglingMorphKeys([oNodeRoot], iAfterBase, baseMorphValues);
+		closeDanglingMorphKeys([oNodeRoot], iAfterBase, baseMorphValues, null, rootRawBase);
 		if(oNodeMouth) closeDanglingMorphKeys([oNodeMouth], iAfterBase, null, mouthRawBase);
 	}
 
@@ -202,7 +205,7 @@ function ApplyDTHWorkflow(options){
 	{
 		print("Applying Physics ROM...");
 		var startFrame = Scene.getAnimRange().end / Scene.getTimeStep();
-		if(!ApplyPhysics(options, oNodeRoot, startFrame))
+		if(!ApplyPhysics(options, oNodeRoot, startFrame, baseMorphValues, rootRawBase))
 			return false;
 	}
 
@@ -438,12 +441,24 @@ function ApplyDK9(options, oNodeRoot, oNodeDk9, startFrame, oRawBase){
 }
 
 
-function ApplyPhysics(options, oNodeRoot, startFrame){
+// `baseMorphValues` / `rootRawBase`: the ROOT figure's pre-ROM snapshots from
+// ApplyDTHWorkflow (evaluated + raw, both taken before any preset loads). The
+// physics preset keys the root figure itself, so its close-out tells a
+// character-owned dial from a physics pose by the same two baselines the
+// base-ROM close-out uses.
+function ApplyPhysics(options, oNodeRoot, startFrame, baseMorphValues, rootRawBase){
 	// Physics ROM length — measured from the actual .duf (was 43 for the stock
 	// example, frames 0-42), never hard-coded.
 	var physFrameCount = getPresetFrameCount(options, "phys");
 	if( physFrameCount < 0 ) return false;
 	setTotalFrames(startFrame + physFrameCount);
+
+	// HEAD (v107): what the figure holds on the frame BEFORE the block, read
+	// raw before the load - anchorBlockHeadKeys keys it back there afterwards
+	// for any morph the preset starts on a different value (the stock preset's
+	// dth_phy_breast_out_l begins at 1, which ramped in from frame 0 across the
+	// whole JCM/FAC/GEN range). A block at frame 0 has no head frame.
+	var oPreBlock = startFrame > 0 ? memorizeRawMorphsAtFrame([oNodeRoot], startFrame - 1) : null;
 
 	var sPhysROM = options["physRomPath"] ? options["physRomPath"] : ROM_PHYS;
 	print("Loading ROM: ", sPhysROM, "at frame", startFrame);
@@ -451,6 +466,21 @@ function ApplyPhysics(options, oNodeRoot, startFrame){
 		logRunError("Failed loading Physics ROM preset: " + sPhysROM + ". ROM aborted.");
 		return false;
 	}
+
+	anchorBlockHeadKeys([oNodeRoot], startFrame, oPreBlock);
+
+	// TAIL (v107): the block's last pose has no ramp-down key past the block
+	// end either (the stock preset ends on dth_phy_stomach_hang = 1 at its
+	// last frame), so it held through every FBM/MISC frame after it - a belly
+	// on every custom shape, and on the close-out frame of a ROM that ends
+	// here. Closed at the first post-block frame, which the setTotalFrames
+	// above already put on the timeline: when PHY is the last block that frame
+	// is the range end (the same extra frame every other block leaves), when
+	// custom frames follow it is their first frame - CreateFrameDatas starts
+	// from the same `Scene.getAnimRange().end` - so the ROM never grows.
+	// Against the root's own baselines, like the base-ROM close-out: a
+	// character-owned dial (non-zero evaluated or raw base) is left alone.
+	closeDanglingMorphKeys([oNodeRoot], startFrame + physFrameCount, baseMorphValues, null, rootRawBase);
 
 	// No per-block setLinearInterp (v78) — see the note in ApplyDK9. On THIS
 	// node it also mattered for correctness: a mid-build frame-0 key on the

@@ -1,3 +1,4 @@
+export { POSE_ASSET_TEMPLATES, poseAssetTemplatesFingerprint } from './csv'
 export * from './daz-csv'
 export * from './dsa-ascii'
 export { dazJson } from './dz-snippets'

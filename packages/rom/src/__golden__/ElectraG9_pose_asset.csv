@@ -532,7 +532,7 @@ PHY,436,BreastIn,5.0,0.0,0.0
 PHY,437,BreastInDown,3.5,-3.5,0.0
 PHY,438,BreastDown,0.0,-5.0,0.0
 PHY,439,BreastOutDown,-3.5,-3.5,0.0
-PHY,440,BreastHangForward,11.0,0.0,-5.0
+PHY,440,BreastHangForward,0.0,0.0,-5.0
 PHYGROUP,0,2,breast_r,5.0,5.0
 PHY,441,BreastOut,5.0,0.0,0.0
 PHY,442,BreastOutUp,3.5,3.5,0.0

@@ -62,7 +62,21 @@ export function RefreshDetection({ report }: { report: AssetVersionReport }) {
         ? 'match'
         : 'mismatch'
 
+  // The CSV also goes stale when the templates it was built from change.
+  const templatesCurrent = characters.every((c) => c.generatedCsvTemplates === app.csvTemplates)
+  const templatesState: VersionRowState = !hasDthRelease || !hasChars
+    ? 'unchecked'
+    : templatesCurrent
+      ? 'match'
+      : 'mismatch'
+
   const rows: Array<VersionRow> = [
+    {
+      label: 'PoseAsset CSV Templates',
+      local: templatesState === 'unchecked' ? '—' : templatesCurrent ? 'current' : 'out of date',
+      app: 'current',
+      state: templatesState,
+    },
     {
       label: 'DTH Version',
       local:
